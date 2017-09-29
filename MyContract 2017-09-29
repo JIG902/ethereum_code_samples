@@ -1,0 +1,115 @@
+pragma solidity ^0.4.15;
+
+contract MyContract {
+
+	// Setup Events
+	event ReadyForReview(address indexed target);
+	event Approved(address indexed target);
+	event FundTransfer(address indexed target, uint amount);
+    
+	// The owner of the contract will be the vendor.
+	// Create a variable to hold the address.
+	address public owner;
+
+	// The following modifier can be applied to functions
+	// that only the owner can execute.
+	modifier onlyOwner {
+		require(msg.sender == owner);
+		_;
+	}
+
+	// A variable to store the customer's address.
+	address public customer;
+
+	// The following modifier can be aplied to functions
+	// that only the customer can execute.
+	modifier onlyCustomer {
+		require(msg.sender == customer);
+		_;
+	}
+
+	// A variable to hold the price of the 
+	// contracted services.
+	uint public contractPrice;
+    
+	// When the buyer accepts the contract, and
+	// makes a payment, it will be stored here.
+	uint public escrowBalance;
+
+	// Flag to show when the work is ready to be reviewed.
+	bool public workReadyForReview;
+	
+	// Flag to show when the work is approved.
+	bool public workApproved;
+
+	/* Contract Constructor */
+	function MyContract(address _customer, uint _price) {
+		// initialize the contract
+
+		owner = msg.sender; // set the owner address
+		customer = _customer; // set the customer address
+		contractPrice = _price; // store the contracted price
+
+		escrowBalance = 0; // Initialize the escrow account.
+
+		workReadyForReview = false; // initialize the workReadyForReview flag.
+	}
+
+	/*
+	* Fallback function
+	*
+	* The function without name is the default function that is called whenever anyone sends funds to a contract
+	*/
+	function () payable {
+		FundTransfer(msg.sender, msg.value);
+	}
+    
+	// Function to flag the work as ready for review.
+	// This can only be sucessfully called by the vendor.
+	function readyForReview() onlyOwner {
+       
+		// Make sure there are enough funds in the escrow account.
+		require(escrowBalance >= contractPrice);
+		
+		// Set the workReadyForReview flag to true
+		workReadyForReview = true;
+
+		// Raise the ReadyForReview event with the customer.
+		ReadyForReview(customer);
+	}
+
+	// The customer calls the acceptContract function
+	// to transfer the funds into escrow.
+	function acceptContract() payable onlyCustomer {
+
+		// The customer must transfer the correct amount of funds.
+		require( msg.value >= contractPrice);
+
+		FundTransfer(msg.sender, msg.value);
+		
+		// Transfer the funds into the contract's escrow account
+		escrowBalance = msg.value / 1000000000000000000; // convert from Wei to ether
+	}
+
+	// After the work has been reviewed, the customer must
+	// call the approveWork function to release the funds.
+	function approveWork() onlyCustomer {
+	
+		// Can only approve if the work was flagged as
+		// ready for review.
+		require(workReadyForReview);
+        
+		// Transfer the release funds to the vendor.
+		// Convert to Wei
+		owner.transfer(escrowBalance * 1000000000000000000);
+
+		// Reset the escrow account.
+		escrowBalance = 0;
+
+		// Set the workApproved flag to true.
+		workApproved = true;
+		
+		// Raise the Approved event with the owner.
+		Approved(owner);
+	}
+}
