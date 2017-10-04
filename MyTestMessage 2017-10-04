@@ -1,0 +1,48 @@
+/*
+    Sample code to store a message in the blockchain
+    that can only be retrieved by the owner.
+*/
+
+pragma solidity ^0.4.15;
+
+contract MyTestMessage {
+
+	// Event to display the message
+	event TheMessage(address target, string messge);
+
+	// The owner of the contract.
+	address owner;
+
+	// The input message.
+	string message;
+
+	// Constructor.
+	function MyTestMessage(string _message) public {
+	    owner = msg.sender; // Set the message owner.
+        message= _message;  // Set the message.
+	}
+	
+	// Public function to pull the message.
+	function getMessage() public returns (string) {
+	
+		// Use a memory pointer for this string as it
+		// does not need to be stored on the blockchain.
+		string memory theMessage;
+
+		// Check that the sender is the contract owner.
+	    if (msg.sender == owner) {
+			// Only the contract owner can get the string back.
+    	    theMessage = message;
+	    } else {
+			// Default to the unknown message for all others.
+	        theMessage = "unknown";
+	    }
+		
+		TheMessage(msg.sender, theMessage);
+		
+		// Return the appropriate string.
+		return theMessage;
+		
+	}
+	
+}
