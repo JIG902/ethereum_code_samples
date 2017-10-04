@@ -1,3 +1,7 @@
+/*
+    Sample code to setup a basic smart contract
+    on the Ethereum blockchain.
+*/
 pragma solidity ^0.4.15;
 
 contract MyContract {
