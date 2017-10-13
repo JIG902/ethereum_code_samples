@@ -1,0 +1,227 @@
+pragma solidity ^0.4.15;
+
+contract MyBank {
+
+    /* * * * * * * * * * * * 
+	 Events
+    * * * * * * * * * * * */
+    event ShowBalance(address indexed target, uint256 amount);
+    event SendMessage(address indexed target, string message);
+    
+    /* * * * * * * * * * * * 
+	 Global Variable
+    * * * * * * * * * * * */
+    // Bank accounts
+    mapping(address => uint256) bankAccounts;
+	
+	// There doesn't seem to be an easy way to
+	// iterate over a mapping. Use an array
+	// of account address to make that possible.
+    address[] indexOfBankAccounts;
+
+	// The bank's owner's address.
+	address public owner;
+
+    /* * * * * * * * * * * * 
+	 Function modifiers.
+    * * * * * * * * * * * */
+	// The following modifier can be applied to functions
+	// that only the owner can execute.
+	modifier onlyOwner {
+		require(msg.sender == owner);
+		_;
+	}
+
+	// The following modifier saves the
+	// deposit amount to the key/value mapping.
+	modifier deposit {
+	
+		// The 'bank' contract can be called by the
+		// ATM contract. If I use msg.sender, I'll
+		// get the address of the ATM. By using the 
+		// tx.orgin property, I'll get the address 
+		// of the actual account making the transfer.
+		
+        bankAccounts[tx.origin] += msg.value;
+		
+		// If the account doesn't exists, add it to the index array.
+		if(!accountExists(tx.origin)) indexOfBankAccounts.push(tx.origin);
+	    _;
+	}
+
+    /* * * * * * * * * * * * 
+	 Constructor function	
+    * * * * * * * * * * * */
+    function MyBank() {
+        owner=msg.sender; // Set the owner to the creator
+    }
+
+    /* * * * * * * * * * * * 
+	 Default function
+	* * * * * * * * * * * */
+	// This function is called when an address
+	// send funds directly to the contract.
+	// It uses the deposit modifier.
+	function () payable deposit {}
+	
+    /* * * * * * * * * * * * 
+	 Public function calls
+    * * * * * * * * * * * */
+
+    // Deposit ether into account.
+	// It uses the deposit modifier.
+    function depositEther() payable deposit {}
+    
+    // Withdraw ether from account
+    function withdrawEther(uint256 _amount) {
+         
+        _amount = _amount * 1e18; // Convert from ether to wei
+        
+        // Check the balance to make sure there's enough.
+        if(_amount<=bankAccounts[tx.origin]) {
+            bankAccounts[tx.origin] -= _amount; // Reduce balance
+            tx.origin.transfer(_amount); // Make the transfer
+        } else {
+            SendMessage(tx.origin, "Not enough ether."); // Send a message with the balance
+        }
+    }
+    
+	// Check the account balance
+    function checkBalance() returns (uint256) {
+	
+		// if tx.origin is the same as msg.sender, this 
+		// function is being called directly. In that case
+		// raise the ShowBalance event. If the checkBalance
+		// function is being called by another contract (ie. the ATB)
+		// just return the balance. The ATM contract will send
+		// message.
+		if(tx.origin == msg.sender) {
+		    ShowBalance(tx.origin, bankAccounts[tx.origin]); // Send a message with the balance
+		}
+		
+		return bankAccounts[tx.origin];
+    }
+
+    // List all account balances
+    function listBalances() onlyOwner {
+		
+        for(uint256 i = 0; i < indexOfBankAccounts.length; i++) {
+			// Raise the ShowBalance event for each account.
+            ShowBalance(indexOfBankAccounts[i], bankAccounts[indexOfBankAccounts[i]]);
+        }
+        
+    }
+
+    /* * * * * * * * * * * * 
+	 Private function calls
+    * * * * * * * * * * * */
+    // Returns true if account already exists
+    function accountExists(address _target) private returns (bool)  {
+
+		bool found = false;
+		
+        for(uint256 i = 0; i < indexOfBankAccounts.length; i++) {
+			if(indexOfBankAccounts[i] == _target) {
+			    found = true;
+				i = indexOfBankAccounts.length + 1; // exit for loop
+			}
+        }
+
+        return found;
+    }
+
+    /* * * * * * * * * * * * 
+	 Kill contract
+    * * * * * * * * * * * */
+    function kill() returns (bool) {
+		// Only allow the contract owner to kill the contract.
+        if (tx.origin == owner) {
+            selfdestruct(owner); // Send any remaining ether to the owner address.
+            return true;
+        } else {
+            return false;
+        }
+    }
+    
+}
+
+
+contract MyATM {
+
+    /* * * * * * * * * * * * 
+	 Events
+    * * * * * * * * * * * */
+    event ShowBalance(address indexed target, uint256 amount);
+    event SendMessage(address indexed target, string message);
+
+    /* * * * * * * * * * * * 
+	 Global Variable
+    * * * * * * * * * * * */
+    address theBank; // Contract address of the bank.
+    MyBank myBank; // Cast of the bank adress
+
+	// The ATM's owner's address.
+	address public owner;
+
+    /* * * * * * * * * * * * 
+	 Function modifiers.
+    * * * * * * * * * * * */
+	// The following modifier can be applied to functions
+	// that only the owner can execute.
+	modifier onlyOwner {
+		require(msg.sender == owner);
+		_;
+	}
+
+    /* * * * * * * * * * * * 
+	 Constructor function	
+    * * * * * * * * * * * */
+    function MyATM(address _bank) {
+		owner = msg.sender;
+        theBank = _bank; // theBank is the address of the 'bank' contract.
+        myBank = MyBank(theBank); // Cast the address as a MyBank object
+    }
+
+    /* * * * * * * * * * * * 
+	 Public function calls
+    * * * * * * * * * * * */
+
+    // Deposit ether into account on the bank contract
+    function depositEther() payable {
+        
+        bool result;
+        
+		// Pass the deposit onto the bank contract.
+		// I've tried a lot of alternatives here, but this 
+		// structure seems to be the only approach that
+		// passes the ether deposit to te bank contract.
+        result = theBank.call.value(msg.value)(bytes4(sha3("depositEther()")));
+        
+    }
+
+    // Withdraw ether from account
+    function withdrawEther(uint256 _amount)  {
+		// One way to call functions on deployed contracts is 
+		// by using the .call method of the contract address:
+        //theBank.call(bytes4(sha3("withdrawEther(uint256)")), _amount);
+		
+		// But, a more intuitive approach is to cast the
+		// adrres into the structure of the contract, and then
+		// simply call the functions directly.
+        myBank.withdrawEther(_amount);
+    }
+
+	// Check the account balance
+    function checkBalance() {
+        uint256 amount = myBank.checkBalance();
+		ShowBalance(msg.sender, amount);
+    }
+
+    /* * * * * * * * * * * * 
+	 Kill contract
+    * * * * * * * * * * * */
+    function kill() onlyOwner {
+        selfdestruct(msg.sender);
+    }
+
+}
